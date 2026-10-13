@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comms Proofing Prototype</title>
+    <title>Comms Proofing</title>
     
     <!-- React & Tailwind -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -284,7 +284,7 @@
                                         <option value="Approved">Approved</option>
                                     </select>
                                 </div>
-                                {project.status !== 'Approved' && !project.isArchived && (
+                                {!project.isArchived && (
                                     <button onClick={() => onSimulateEmail(project)} className="text-xs text-primary hover:underline flex items-center mt-2 border border-primary/20 bg-primary/5 px-3 py-1.5 rounded-md w-full sm:w-auto justify-center">
                                         <IconMail /> <span className="ml-1">Simulate Recipient Emails</span>
                                     </button>
@@ -337,14 +337,14 @@
                                                     <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
                                                         <span className="text-xs font-bold text-slate-700 block mb-2 uppercase tracking-wider">Activity:</span>
                                                         {version.feedback.map((fb, i) => (
-                                                            <div key={i} className={`p-3 rounded-lg text-sm ${fb.type === 'approve' ? 'bg-emerald-50 border border-emerald-100' : fb.type === 'override' ? 'bg-amber-50 border border-amber-100' : 'bg-rose-50 border border-rose-100'}`}>
+                                                            <div key={i} className={`p-3 rounded-lg text-sm ${fb.type === 'approve' ? 'bg-emerald-50 border border-emerald-100' : fb.type === 'override' ? 'bg-slate-100 border border-slate-200' : 'bg-rose-50 border border-rose-100'}`}>
                                                                 <div className="flex items-center mb-1 flex-wrap gap-1">
                                                                     <span className="font-semibold text-slate-900 mr-1">{fb.recipientName}</span>
                                                                     {fb.role && <span className="text-xs text-slate-500">({fb.role})</span>}
                                                                     <span className="text-slate-300">•</span>
                                                                     <span className="text-xs text-slate-500">{fb.date}</span>
                                                                 </div>
-                                                                <p className={`${fb.type === 'approve' ? 'text-emerald-800 font-medium' : fb.type === 'override' ? 'text-amber-800 italic text-xs' : 'text-rose-900'}`}>{fb.text}</p>
+                                                                <p className={`${fb.type === 'approve' ? 'text-emerald-800 font-medium' : fb.type === 'override' ? 'text-slate-700 font-medium text-xs uppercase' : 'text-rose-900'}`}>{fb.text}</p>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -758,6 +758,7 @@
         }
 
         // --- SUPABASE INITIALIZATION ---
+        // Safely declare at the top level so it is globally available and never loops.
         const supabaseUrl = 'https://pjalmpjqwdvlnqwesmem.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqYWxtcGpxd2R2bG5xd2VzbWVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDkxNjAsImV4cCI6MjEwNzQ4NTE2MH0.7agX66iwcVGnTpaVCHs77nQoXVScNV_UAQmBw94yIDc';
         
@@ -776,11 +777,52 @@
             const [isNewVersionModalOpen, setIsNewVersionModalOpen] = useState(false);
             const [isSubmitting, setIsSubmitting] = useState(false);
             
-            const [dbReady, setDbReady] = useState(false);
             const [isExternalUser, setIsExternalUser] = useState(false); 
+            const [isAuthenticating, setIsAuthenticating] = useState(true);
 
+            // 1. URL ROUTING (Runs once on startup to check if they are clicking an email link)
             useEffect(() => {
-                if (!supabase) return;
+                const checkRouting = async () => {
+                    const params = new URLSearchParams(window.location.search);
+                    const projectId = params.get('project');
+                    const userEmail = params.get('email');
+
+                    if (projectId && userEmail) {
+                        setIsExternalUser(true); // Lock out the internal dashboard
+                        
+                        if (supabase) {
+                            // Safely fetch JUST this one project directly
+                            const { data } = await supabase.from('projects').select('*').eq('id', projectId).single();
+                            if (data && data.data) {
+                                const proj = data.data;
+                                const rec = proj.recipients.find(r => r.email.toLowerCase() === userEmail.toLowerCase());
+                                if (rec) {
+                                    // Log them in!
+                                    setProjects([proj]); // Populate state with only their project
+                                    setActiveProjectId(projectId);
+                                    setActiveRecipient(rec);
+                                    setView('approver');
+                                    
+                                    // Clean the URL so they don't accidentally share their magic link!
+                                    window.history.replaceState({}, document.title, window.location.pathname);
+                                } else {
+                                    alert("Your email is not on the recipient list for this project.");
+                                }
+                            } else {
+                                alert("Project not found. It may have been deleted.");
+                            }
+                        }
+                    }
+                    setIsAuthenticating(false); // Done checking!
+                };
+                
+                checkRouting();
+            }, []);
+
+            // 2. DASHBOARD DATA FETCH (Only runs for Internal Admins)
+            useEffect(() => {
+                // If they are an external user or we are still checking the URL, DO NOT load the dashboard!
+                if (!supabase || isExternalUser || isAuthenticating) return;
 
                 const fetchProjects = async () => {
                     const { data, error } = await supabase.from('projects').select('*');
@@ -790,43 +832,20 @@
                         const loadedProjects = data.map(row => row.data);
                         loadedProjects.sort((a,b) => b.createdAt - a.createdAt);
                         setProjects(loadedProjects);
-                        setDbReady(true);
                     }
                 };
 
                 fetchProjects();
 
+                // Listen for live updates
                 const channel = supabase.channel('schema-db-changes')
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, fetchProjects)
                     .subscribe();
 
                 return () => supabase.removeChannel(channel);
-            }, []);
+            }, [isExternalUser, isAuthenticating]);
 
-            useEffect(() => {
-                if (dbReady) {
-                    const params = new URLSearchParams(window.location.search);
-                    const projectId = params.get('project');
-                    const userEmail = params.get('email');
-                    
-                    if (projectId && userEmail) {
-                        const proj = projects.find(p => p.id === projectId);
-                        if (proj) {
-                            const rec = proj.recipients.find(r => r.email.toLowerCase() === userEmail.toLowerCase());
-                            if (rec) {
-                                setIsExternalUser(true);
-                                setActiveProjectId(projectId);
-                                setActiveRecipient(rec);
-                                setView('approver');
-                            } else {
-                                alert("We couldn't find your email associated with this project.");
-                            }
-                        }
-                        window.history.replaceState({}, document.title, window.location.pathname);
-                    }
-                }
-            }, [dbReady, projects]);
-
+            // --- Handlers ---
             const activeProject = projects.find(p => p.id === activeProjectId);
 
             const saveToSupabase = async (projectObj) => {
@@ -838,10 +857,11 @@
             };
 
             const dispatchEmails = async (projectToEmail) => {
-                // Initialize EmailJS ONLY if we are actually sending an email
                 emailjs.init("PvsllnDOQwoWNZN2P"); 
                 
-                const baseUrl = window.location.href.split('?')[0];
+                // Get base URL without any search params or hash marks
+                const baseUrl = window.location.href.split('?')[0].split('#')[0];
+                
                 const emailPromises = projectToEmail.recipients.map(recipient => {
                     const magicLink = `${baseUrl}?project=${projectToEmail.id}&email=${encodeURIComponent(recipient.email)}`;
                     const templateParams = {
@@ -868,7 +888,7 @@
                     id: newId,
                     name: data.name,
                     dueDate: data.dueDate || 'No Date',
-                    status: 'Pending Approval', // Overall Project Status
+                    status: 'Pending Approval',
                     createdAt: Date.now(),
                     isArchived: false,
                     recipients: data.recipients,
@@ -878,7 +898,7 @@
                         sentDate: new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}),
                         message: data.message,
                         links: data.link ? [data.link] : [],
-                        status: 'Pending Approval', // Status of this specific version
+                        status: 'Pending Approval', 
                         feedback: []
                     }]
                 };
@@ -893,10 +913,14 @@
 
             const handleSendNewVersion = async (data) => {
                 setIsSubmitting(true);
-                const project = activeProject;
+                
+                // CRITICAL: Fetch the latest state directly from DB before appending version!
+                const { data: dbData } = await supabase.from('projects').select('*').eq('id', activeProject.id).single();
+                const latestProject = (dbData && dbData.data) ? dbData.data : activeProject;
+
                 const newVersion = {
                     id: `v${Date.now()}`,
-                    versionNumber: project.versions.length + 1,
+                    versionNumber: latestProject.versions.length + 1,
                     sentDate: new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}),
                     message: data.message,
                     links: data.link ? [data.link] : [],
@@ -905,12 +929,12 @@
                 };
 
                 const updatedProject = {
-                    ...project,
-                    status: 'Pending Approval', // Reset OVERALL project status
-                    versions: [newVersion, ...project.versions]
+                    ...latestProject,
+                    status: 'Pending Approval', // Reset overall status
+                    versions: [newVersion, ...latestProject.versions]
                 };
 
-                setProjects(projects.map(p => p.id === project.id ? updatedProject : p));
+                setProjects(projects.map(p => p.id === latestProject.id ? updatedProject : p));
                 await saveToSupabase(updatedProject);
                 await dispatchEmails(updatedProject);
                 
@@ -919,9 +943,11 @@
             };
 
             const handleApproverDecision = async (projectId, recipient, type, text) => {
-                const project = projects.find(p => p.id === projectId);
-                if (!project) return;
+                // CRITICAL FIX: Fetch absolute latest project to prevent overwriting comments if multiple people approve at once!
+                const { data } = await supabase.from('projects').select('*').eq('id', projectId).single();
+                if (!data || !data.data) return;
                 
+                const latestProject = data.data;
                 const isApprove = type === 'approve';
                 const newStatus = isApprove ? 'Approved' : 'Changes Requested';
                 
@@ -933,43 +959,46 @@
                     date: new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
                 };
 
-                // Create a copy of the versions array
-                const updatedVersions = [...project.versions];
-                
-                // Update ONLY the first (latest) version with the feedback and ITS specific status
+                const updatedVersions = [...latestProject.versions];
                 updatedVersions[0] = {
                     ...updatedVersions[0],
                     status: newStatus,
+                    // Append new feedback to the EXISTING feedback array, never overwrite
                     feedback: [...(updatedVersions[0].feedback || []), newFeedback]
                 };
 
-                // Update the overall PROJECT status
-                const updatedProject = { ...project, status: newStatus, versions: updatedVersions };
+                const updatedProject = { ...latestProject, status: newStatus, versions: updatedVersions };
 
-                setProjects(projects.map(p => p.id === projectId ? updatedProject : p));
                 await saveToSupabase(updatedProject);
+                // Also update local state for the external user view so it succeeds cleanly
+                setProjects(projects.map(p => p.id === projectId ? updatedProject : p));
             };
 
             const handleStatusOverride = async (projectId, newStatus) => {
-                const project = projects.find(p => p.id === projectId);
-                if (!project) return;
+                // Fetch absolute latest to prevent race conditions
+                const { data } = await supabase.from('projects').select('*').eq('id', projectId).single();
+                if (!data || !data.data) return;
+                
+                const latestProject = data.data;
 
                 const overrideRecord = {
                     recipientName: 'Comms Admin',
                     role: 'Manual Override',
                     type: 'override',
-                    text: `Manually changed project status to: ${newStatus}`,
+                    text: `Changed project status to: ${newStatus}`,
                     date: new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
                 };
 
-                const updatedVersions = [...project.versions];
+                const updatedVersions = [...latestProject.versions];
                 updatedVersions[0] = {
                     ...updatedVersions[0],
+                    status: newStatus,
                     feedback: [...(updatedVersions[0].feedback || []), overrideRecord]
                 };
 
-                const updatedProject = { ...project, status: newStatus, versions: updatedVersions };
+                const updatedProject = { ...latestProject, status: newStatus, versions: updatedVersions };
                 
+                // Optimistic UI update
                 setProjects(projects.map(p => p.id === projectId ? updatedProject : p));
                 await saveToSupabase(updatedProject);
             };
@@ -981,6 +1010,16 @@
                 if (view === 'detail') setView(updatedProject.isArchived ? 'archive' : 'dashboard');
             };
 
+            // Don't flash the dashboard while we verify their magic link
+            if (isAuthenticating) {
+                return (
+                    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full"></div>
+                        <span className="ml-3 text-slate-600 font-medium">Securing Portal...</span>
+                    </div>
+                )
+            }
+
             return (
                 <div className="min-h-screen">
                     {!isExternalUser && (view === 'dashboard' || view === 'archive' || view === 'detail') && (
@@ -988,7 +1027,7 @@
                             <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
                                 <div className="flex items-center space-x-2 font-bold text-lg cursor-pointer" onClick={() => setView('dashboard')}>
                                     <div className="w-6 h-6 bg-primary rounded flex items-center justify-center text-xs">IC</div>
-                                    <span>Comms Proofs {dbReady && <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-normal border border-green-500/30">Live Database</span>}</span>
+                                    <span>Comms Proofs <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-normal border border-green-500/30">Live DB</span></span>
                                 </div>
                                 <div className="flex items-center gap-6 text-sm font-medium">
                                     <button 
