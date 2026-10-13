@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comms Proofing Prototype</title>
+    <title>Comms Proofing</title>
     
     <!-- React & Tailwind -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -226,7 +226,7 @@
             );
         };
 
-        const ProjectDetail = ({ project, onBack, onNewVersion, onSimulateEmail, onToggleArchive }) => {
+        const ProjectDetail = ({ project, onBack, onNewVersion, onSimulateEmail, onToggleArchive, onStatusOverride }) => {
             if (!project) return null;
 
             return (
@@ -268,8 +268,23 @@
                                 </div>
                             </div>
                             <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
-                                <Badge status={project.status} />
-                                {project.status !== 'Approved' && !project.isArchived && (
+                                <div className="flex flex-col items-end gap-1">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Project Status</span>
+                                    <select 
+                                        className={`text-sm font-medium rounded-full border px-3 py-1 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary
+                                            ${project.status === 'Pending Approval' ? 'border-amber-300 text-amber-700' : 
+                                              project.status === 'Changes Requested' ? 'border-rose-300 text-rose-700' : 
+                                              'border-emerald-300 text-emerald-700'}`}
+                                        value={project.status}
+                                        onChange={(e) => onStatusOverride(project.id, e.target.value)}
+                                        disabled={project.isArchived}
+                                    >
+                                        <option value="Pending Approval">Pending Approval</option>
+                                        <option value="Changes Requested">Changes Requested</option>
+                                        <option value="Approved">Approved</option>
+                                    </select>
+                                </div>
+                                {!project.isArchived && (
                                     <button onClick={() => onSimulateEmail(project)} className="text-xs text-primary hover:underline flex items-center mt-2 border border-primary/20 bg-primary/5 px-3 py-1.5 rounded-md w-full sm:w-auto justify-center">
                                         <IconMail /> <span className="ml-1">Simulate Recipient Emails</span>
                                     </button>
@@ -284,14 +299,17 @@
                                 {project.versions.map((version, index) => {
                                     const isLatest = index === 0;
                                     return (
-                                        <div key={version.id} className="relative flex items-start justify-between md:justify-normal md:odd:flex-row-reverse group">
-                                            <div className={`flex items-center justify-center w-8 h-8 rounded-full border-4 border-slate-50 bg-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 ${isLatest ? 'ring-2 ring-primary border-white' : ''}`}>
+                                        <div key={version.id} className="relative flex flex-col md:flex-row items-start justify-between md:justify-normal md:odd:flex-row-reverse group">
+                                            <div className={`hidden md:flex items-center justify-center w-8 h-8 rounded-full border-4 border-slate-50 bg-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 ${isLatest ? 'ring-2 ring-primary border-white' : ''}`}>
                                                 <span className="text-xs font-bold text-slate-500">v{version.versionNumber}</span>
                                             </div>
                                             
-                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                                            <div className="w-full md:w-[calc(50%-2.5rem)] bg-white p-5 rounded-xl border border-slate-200 shadow-sm ml-8 md:ml-0">
                                                 <div className="flex justify-between items-start mb-2">
-                                                    <span className="text-xs font-medium text-slate-500">{version.sentDate}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="md:hidden text-xs font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-500">v{version.versionNumber}</span>
+                                                        <span className="text-xs font-medium text-slate-500">{version.sentDate}</span>
+                                                    </div>
                                                     <Badge status={version.status} />
                                                 </div>
                                                 
@@ -317,16 +335,16 @@
                                                 {/* Feedback Section */}
                                                 {version.feedback && version.feedback.length > 0 && (
                                                     <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
-                                                        <span className="text-xs font-bold text-slate-700 block mb-2 uppercase tracking-wider">Feedback Received:</span>
+                                                        <span className="text-xs font-bold text-slate-700 block mb-2 uppercase tracking-wider">Activity:</span>
                                                         {version.feedback.map((fb, i) => (
-                                                            <div key={i} className={`p-3 rounded-lg text-sm ${fb.type === 'approve' ? 'bg-emerald-50 border border-emerald-100' : 'bg-rose-50 border border-rose-100'}`}>
-                                                                <div className="flex items-center mb-1">
+                                                            <div key={i} className={`p-3 rounded-lg text-sm ${fb.type === 'approve' ? 'bg-emerald-50 border border-emerald-100' : fb.type === 'override' ? 'bg-slate-100 border border-slate-200' : 'bg-rose-50 border border-rose-100'}`}>
+                                                                <div className="flex items-center mb-1 flex-wrap gap-1">
                                                                     <span className="font-semibold text-slate-900 mr-1">{fb.recipientName}</span>
-                                                                    <span className="text-xs text-slate-500">({fb.role})</span>
-                                                                    <span className="mx-2 text-slate-300">•</span>
+                                                                    {fb.role && <span className="text-xs text-slate-500">({fb.role})</span>}
+                                                                    <span className="text-slate-300">•</span>
                                                                     <span className="text-xs text-slate-500">{fb.date}</span>
                                                                 </div>
-                                                                <p className={fb.type === 'approve' ? 'text-emerald-800 font-medium' : 'text-rose-900'}>{fb.text}</p>
+                                                                <p className={`${fb.type === 'approve' ? 'text-emerald-800 font-medium' : fb.type === 'override' ? 'text-slate-700 font-medium text-xs uppercase' : 'text-rose-900'}`}>{fb.text}</p>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -338,7 +356,7 @@
                             </div>
                         </div>
                         
-                        {project.status === 'Changes Requested' && !project.isArchived && (
+                        {!project.isArchived && (
                             <div className="p-6 bg-white border-t border-slate-200 flex justify-center">
                                 <Button onClick={() => onNewVersion(project)}>
                                     <IconPlus /> <span className="ml-2">Send New Version</span>
@@ -406,7 +424,6 @@
 
                 onSubmit({ name, dueDate, link, message, recipients });
                 
-                // Reset form
                 setName(''); setDueDate(''); setLink(''); setMessage('');
                 setRecipients([{ id: 1, name: '', email: '', role: 'Approver' }]);
             };
@@ -426,20 +443,19 @@
                             </div>
                         </div>
 
-                        {/* Recipients Block */}
                         <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                             <label className="block text-sm font-semibold text-slate-700 mb-3">Recipients *</label>
                             <div className="space-y-3">
-                                {recipients.map((recipient, index) => (
-                                    <div key={recipient.id} className="flex items-start gap-2">
-                                        <div className="flex-1 grid grid-cols-12 gap-2">
-                                            <div className="col-span-4">
+                                {recipients.map((recipient) => (
+                                    <div key={recipient.id} className="flex flex-col sm:flex-row items-start gap-2">
+                                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2 w-full">
+                                            <div className="col-span-1 sm:col-span-4">
                                                 <input type="text" placeholder="Name" className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md" value={recipient.name} onChange={e => handleRecipientChange(recipient.id, 'name', e.target.value)} />
                                             </div>
-                                            <div className="col-span-5">
+                                            <div className="col-span-1 sm:col-span-5">
                                                 <input type="email" placeholder="Email" className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md" value={recipient.email} onChange={e => handleRecipientChange(recipient.id, 'email', e.target.value)} />
                                             </div>
-                                            <div className="col-span-3">
+                                            <div className="col-span-1 sm:col-span-3">
                                                 <select className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md bg-white" value={recipient.role} onChange={e => handleRecipientChange(recipient.id, 'role', e.target.value)}>
                                                     <option value="Approver">Final Approver</option>
                                                     <option value="Reviewer">Reviewer Only</option>
@@ -447,7 +463,7 @@
                                             </div>
                                         </div>
                                         {recipients.length > 1 && (
-                                            <button onClick={() => handleRemoveRecipient(recipient.id)} className="p-1.5 text-slate-400 hover:text-rose-500 rounded"><IconTrash /></button>
+                                            <button onClick={() => handleRemoveRecipient(recipient.id)} className="p-1.5 text-slate-400 hover:text-rose-500 rounded self-end sm:self-auto"><IconTrash /></button>
                                         )}
                                     </div>
                                 ))}
@@ -576,7 +592,6 @@
             const [view, setView] = useState('review'); 
             const [feedback, setFeedback] = useState('');
 
-            // Safety check in case the project was deleted or hasn't loaded
             if (!project || !recipient) {
                 return (
                     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -740,10 +755,6 @@
             );
         }
 
-        // ==========================================
-        // CRITICAL FIX: INITIALIZE SUPABASE OUTSIDE APP COMPONENT
-        // This prevents the app from creating infinite database loops!
-        // ==========================================
         const supabaseUrl = 'https://pjalmpjqwdvlnqwesmem.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqYWxtcGpxd2R2bG5xd2VzbWVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDkxNjAsImV4cCI6MjEwNzQ4NTE2MH0.7agX66iwcVGnTpaVCHs77nQoXVScNV_UAQmBw94yIDc';
         const supabase = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
@@ -758,21 +769,69 @@
             const [isNewVersionModalOpen, setIsNewVersionModalOpen] = useState(false);
             const [isSubmitting, setIsSubmitting] = useState(false);
             
-            const [dbReady, setDbReady] = useState(false);
             const [isExternalUser, setIsExternalUser] = useState(false); 
+            const [isAuthenticating, setIsAuthenticating] = useState(true);
 
+            // 1. URL ROUTING - Runs once to check for magic links
             useEffect(() => {
-                if (!supabase) return;
+                const checkRouting = async () => {
+                    const params = new URLSearchParams(window.location.search);
+                    const projectId = params.get('project');
+                    const userEmail = params.get('email');
+
+                    if (projectId && userEmail) {
+                        setIsExternalUser(true); 
+                        
+                        if (supabase) {
+                            try {
+                                const { data, error } = await supabase.from('projects').select('*').eq('id', projectId).single();
+                                
+                                if (error) {
+                                    alert(`Could not load proof. Database error: ${error.message}`);
+                                    setIsAuthenticating(false);
+                                    return;
+                                }
+
+                                if (data && data.data) {
+                                    const proj = data.data;
+                                    const rec = proj.recipients.find(r => r.email.trim().toLowerCase() === userEmail.trim().toLowerCase());
+                                    if (rec) {
+                                        setProjects([proj]); 
+                                        setActiveProjectId(projectId);
+                                        setActiveRecipient(rec);
+                                        setView('approver');
+                                        window.history.replaceState({}, document.title, window.location.pathname);
+                                    } else {
+                                        alert("Your email is not on the recipient list for this project.");
+                                    }
+                                } else {
+                                    alert("Project not found. It may have been deleted.");
+                                }
+                            } catch (err) {
+                                alert("Failed to connect to the database securely. Please try again.");
+                                console.error(err);
+                            }
+                        }
+                    }
+                    setIsAuthenticating(false); 
+                };
+                
+                checkRouting();
+            }, []);
+
+            // 2. DASHBOARD DATA FETCH - Internal Admins Only
+            useEffect(() => {
+                if (!supabase || isExternalUser || isAuthenticating) return;
 
                 const fetchProjects = async () => {
                     const { data, error } = await supabase.from('projects').select('*');
                     if (error) {
                         console.error("Error fetching projects:", error);
+                        alert(`Failed to load projects from Supabase: ${error.message}`);
                     } else {
                         const loadedProjects = data.map(row => row.data);
                         loadedProjects.sort((a,b) => b.createdAt - a.createdAt);
                         setProjects(loadedProjects);
-                        setDbReady(true);
                     }
                 };
 
@@ -783,42 +842,21 @@
                     .subscribe();
 
                 return () => supabase.removeChannel(channel);
-            }, []);
+            }, [isExternalUser, isAuthenticating]);
 
-            // Magic Link Routing
-            useEffect(() => {
-                if (dbReady) {
-                    const params = new URLSearchParams(window.location.search);
-                    const projectId = params.get('project');
-                    const userEmail = params.get('email');
-                    
-                    if (projectId && userEmail) {
-                        const proj = projects.find(p => p.id === projectId);
-                        if (proj) {
-                            const rec = proj.recipients.find(r => r.email.toLowerCase() === userEmail.toLowerCase());
-                            if (rec) {
-                                setIsExternalUser(true);
-                                setActiveProjectId(projectId);
-                                setActiveRecipient(rec);
-                                setView('approver');
-                            } else {
-                                alert("We couldn't find your email associated with this project.");
-                            }
-                        }
-                        window.history.replaceState({}, document.title, window.location.pathname);
-                    }
-                }
-            }, [dbReady, projects]);
-
-            const activeProject = projects.find(p => p.id === activeProjectId);
-
+            // --- Robust DB Saving Function ---
             const saveToSupabase = async (projectObj) => {
-                if (!supabase) return;
+                if (!supabase) return { error: 'No DB connection' };
+                
                 const { error } = await supabase
                     .from('projects')
                     .upsert({ id: projectObj.id, data: projectObj });
                 
-                if (error) console.error("Error saving to Supabase:", error);
+                if (error) {
+                    console.error("Supabase Save Error:", error);
+                    alert(`CRITICAL DATABASE ERROR: ${error.message}\n\nPlease check your Supabase table. Ensure the 'id' column is set to type 'text' and 'data' is 'jsonb'. If 'id' is still an integer or UUID, this save will fail silently.`);
+                }
+                return { error };
             };
 
             const dispatchEmails = async (projectToEmail) => {
@@ -841,7 +879,10 @@
                         'template_skdua0m', 
                         templateParams, 
                         'PvsllnDOQwoWNZN2P'
-                    ).catch(err => console.error("EmailJS Failed for " + recipient.email, err));
+                    ).catch(err => {
+                        console.error("EmailJS Failed for " + recipient.email, err);
+                        alert("EmailJS failed to send to " + recipient.email + ". Error: " + JSON.stringify(err));
+                    });
                 });
                 
                 await Promise.all(emailPromises);
@@ -869,11 +910,11 @@
                     }]
                 };
 
-                setProjects([newProject, ...projects]); 
-                await saveToSupabase(newProject);
-                
-                // SEND REAL EMAILS
-                await dispatchEmails(newProject);
+                const dbResult = await saveToSupabase(newProject);
+                if (!dbResult.error) {
+                    setProjects(prev => [newProject, ...prev]); 
+                    await dispatchEmails(newProject);
+                }
                 
                 setIsSubmitting(false);
                 setIsNewProjectModalOpen(false);
@@ -881,10 +922,19 @@
 
             const handleSendNewVersion = async (data) => {
                 setIsSubmitting(true);
-                const project = activeProject;
+                
+                // Fetch absolute latest to prevent race conditions
+                const activeProject = projects.find(p => p.id === activeProjectId);
+                let latestProject = activeProject;
+                
+                const { data: dbData } = await supabase.from('projects').select('*').eq('id', activeProject.id).single();
+                if (dbData && dbData.data) {
+                    latestProject = dbData.data;
+                }
+
                 const newVersion = {
                     id: `v${Date.now()}`,
-                    versionNumber: project.versions.length + 1,
+                    versionNumber: latestProject.versions.length + 1,
                     sentDate: new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}),
                     message: data.message,
                     links: data.link ? [data.link] : [],
@@ -893,25 +943,32 @@
                 };
 
                 const updatedProject = {
-                    ...project,
+                    ...latestProject,
                     status: 'Pending Approval',
-                    versions: [newVersion, ...project.versions]
+                    versions: [newVersion, ...latestProject.versions]
                 };
 
-                setProjects(projects.map(p => p.id === project.id ? updatedProject : p));
-                await saveToSupabase(updatedProject);
-                
-                // SEND REAL EMAILS
-                await dispatchEmails(updatedProject);
+                const dbResult = await saveToSupabase(updatedProject);
+                if (!dbResult.error) {
+                    setProjects(prev => prev.map(p => p.id === latestProject.id ? updatedProject : p));
+                    await dispatchEmails(updatedProject);
+                }
                 
                 setIsSubmitting(false);
                 setIsNewVersionModalOpen(false);
             };
 
             const handleApproverDecision = async (projectId, recipient, type, text) => {
-                const project = projects.find(p => p.id === projectId);
-                if (!project) return;
+                // Fetch absolute latest project to prevent overwriting comments
+                const { data, error } = await supabase.from('projects').select('*').eq('id', projectId).single();
                 
+                if (error || !data || !data.data) {
+                    console.error("Fetch error for decision:", error);
+                    alert("Failed to save your decision. Database connection failed.");
+                    return;
+                }
+                
+                const latestProject = data.data;
                 const isApprove = type === 'approve';
                 const newStatus = isApprove ? 'Approved' : 'Changes Requested';
                 
@@ -923,25 +980,74 @@
                     date: new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
                 };
 
-                const updatedVersions = [...project.versions];
+                const updatedVersions = [...latestProject.versions];
                 updatedVersions[0] = {
                     ...updatedVersions[0],
                     status: newStatus,
                     feedback: [...(updatedVersions[0].feedback || []), newFeedback]
                 };
 
-                const updatedProject = { ...project, status: newStatus, versions: updatedVersions };
+                const updatedProject = { ...latestProject, status: newStatus, versions: updatedVersions };
 
-                setProjects(projects.map(p => p.id === projectId ? updatedProject : p));
-                await saveToSupabase(updatedProject);
+                const dbResult = await saveToSupabase(updatedProject);
+                
+                if (!dbResult.error) {
+                    setProjects(prev => prev.map(p => p.id === projectId ? updatedProject : p));
+                }
+            };
+
+            const handleStatusOverride = async (projectId, newStatus) => {
+                const { data, error } = await supabase.from('projects').select('*').eq('id', projectId).single();
+                if (error || !data || !data.data) {
+                    alert("Database failed to load project for override.");
+                    return;
+                }
+                
+                const latestProject = data.data;
+
+                const overrideRecord = {
+                    recipientName: 'Comms Admin',
+                    role: 'Manual Override',
+                    type: 'override',
+                    text: `Changed project status to: ${newStatus}`,
+                    date: new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
+                };
+
+                const updatedVersions = [...latestProject.versions];
+                updatedVersions[0] = {
+                    ...updatedVersions[0],
+                    status: newStatus,
+                    feedback: [...(updatedVersions[0].feedback || []), overrideRecord]
+                };
+
+                const updatedProject = { ...latestProject, status: newStatus, versions: updatedVersions };
+                
+                const dbResult = await saveToSupabase(updatedProject);
+                if (!dbResult.error) {
+                    setProjects(prev => prev.map(p => p.id === projectId ? updatedProject : p));
+                }
             };
 
             const handleToggleArchive = async (projectToToggle) => {
                 const updatedProject = { ...projectToToggle, isArchived: !projectToToggle.isArchived };
-                setProjects(projects.map(p => p.id === updatedProject.id ? updatedProject : p));
-                await saveToSupabase(updatedProject);
-                if (view === 'detail') setView(updatedProject.isArchived ? 'archive' : 'dashboard');
+                const dbResult = await saveToSupabase(updatedProject);
+                if (!dbResult.error) {
+                    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+                    if (view === 'detail') setView(updatedProject.isArchived ? 'archive' : 'dashboard');
+                }
             };
+
+            // Loading Screen for magic links
+            if (isAuthenticating) {
+                return (
+                    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full"></div>
+                        <span className="ml-3 text-slate-600 font-medium">Securing Portal...</span>
+                    </div>
+                )
+            }
+
+            const activeProject = projects.find(p => p.id === activeProjectId);
 
             return (
                 <div className="min-h-screen">
@@ -950,7 +1056,7 @@
                             <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
                                 <div className="flex items-center space-x-2 font-bold text-lg cursor-pointer" onClick={() => setView('dashboard')}>
                                     <div className="w-6 h-6 bg-primary rounded flex items-center justify-center text-xs">IC</div>
-                                    <span>Comms Proofs {dbReady && <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-normal border border-green-500/30">Live Database Connected</span>}</span>
+                                    <span>Comms Proofs <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-normal border border-green-500/30">Live DB</span></span>
                                 </div>
                                 <div className="flex items-center gap-6 text-sm font-medium">
                                     <button 
@@ -995,6 +1101,7 @@
                             onNewVersion={() => setIsNewVersionModalOpen(true)}
                             onSimulateEmail={() => setView('email')}
                             onToggleArchive={handleToggleArchive}
+                            onStatusOverride={handleStatusOverride}
                         />
                     )}
 
